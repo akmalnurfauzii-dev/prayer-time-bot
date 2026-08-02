@@ -20,6 +20,9 @@ GROQ_MODELS = [
     "llama-3.1-8b-instant",
 ]
 
+# Window deteksi waktu sholat — kirim kalau 0-20 menit setelah adzan
+WINDOW_MINUTES = 20
+
 STATE_FILE = "state.json"
 PRAYER_NAMES = {
     "Fajr": "Subuh",
@@ -38,18 +41,24 @@ NIAT = {
 
 
 def load_state():
+    today = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            data = json.load(f)
-        today = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
-        if data.get("date") == today:
-            return data
-    return {"date": datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d"), "sent": []}
+        try:
+            with open(STATE_FILE, "r") as f:
+                data = json.load(f)
+            if data.get("date") == today:
+                return data
+        except Exception:
+            pass
+    # Reset state untuk hari baru
+    fresh = {"date": today, "sent": []}
+    save_state(fresh)
+    return fresh
 
 
 def save_state(state):
     with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+        json.dump(state, f, indent=2)
 
 
 def get_prayer_times():
@@ -71,18 +80,25 @@ def find_due_prayer(prayer_times, state):
     now = datetime.now(ZoneInfo(TIMEZONE))
     now_minutes = now.hour * 60 + now.minute
 
-    print(f"Waktu sekarang: {now.strftime('%H:%M')} WIB")
+    print(f"\n{'='*40}")
+    print(f"Waktu sekarang : {now.strftime('%H:%M')} WIB")
+    print(f"Sudah terkirim : {state['sent']}")
+    print(f"{'='*40}")
+
     for key, waktu in prayer_times.items():
         h, m = map(int, waktu.split(":"))
         prayer_minutes = h * 60 + m
         diff = now_minutes - prayer_minutes
-        print(f"  {PRAYER_NAMES[key]} ({waktu}): selisih {diff} menit | sudah kirim: {key in state['sent']}")
+        status = "✅ sudah kirim" if key in state["sent"] else f"selisih {diff} menit"
+        print(f"  {PRAYER_NAMES[key]:8} ({waktu}) — {status}")
 
         if key in state["sent"]:
             continue
-        # Kirim kalau dalam window 0-10 menit setelah waktu sholat
-        if 0 <= diff <= 10:
+        if 0 <= diff <= WINDOW_MINUTES:
+            print(f"\n>>> KIRIM: {PRAYER_NAMES[key]} (selisih {diff} menit) <<<")
             return key
+
+    print("\nTidak ada waktu sholat dalam window sekarang.")
     return None
 
 
@@ -91,18 +107,18 @@ def generate_motivation(prayer_key):
     prompt = f"""Buatkan pesan singkat pengingat waktu sholat {nama_waktu} dalam Bahasa Indonesia untuk seorang pemuda muslim bernama Akmal yang sedang berjuang meraih beasiswa kuliah S1 Computer Science ke luar negeri dan membantu usaha keluarga.
 
 Format pesan:
-1. Satu kalimat motivasi yang related dengan waktu {nama_waktu} — tentang semangat sukses, rezeki, dan selalu mengingat Allah dalam usaha (beasiswa, bisnis, belajar)
-2. Buat bervariasi tiap kali, jangan template kaku, boleh sisipkan quote islami singkat atau ayat/hadits (tanpa perlu sertakan sanad panjang, cukup makna/terjemahan singkat)
+1. Motivasi related dengan waktu {nama_waktu} — tentang semangat sukses, rezeki, dan selalu mengingat Allah dalam usaha (beasiswa, bisnis, belajar)
+2. Buat bervariasi, jangan template kaku, boleh sisipkan quote islami singkat atau ayat/hadits
 3. Nada hangat, membangun semangat, bukan menggurui
 4. Maksimal 4-5 kalimat total
-5. Jangan pakai emoji berlebihan (maksimal 1-2 kalau perlu)
+5. Jangan pakai emoji berlebihan (maksimal 1-2)
 
-Jawab HANYA isi pesannya saja, tanpa embel-embel pembuka seperti "Berikut pesannya:".
+Jawab HANYA isi pesannya saja, tanpa embel-embel pembuka.
 """
     last_error = None
     for model in GROQ_MODELS:
         try:
-            print(f"Mencoba model: {model}")
+            print(f"Mencoba model: {model}...")
             resp = requests.post(
                 GROQ_API_URL,
                 headers={
@@ -113,22 +129,22 @@ Jawab HANYA isi pesannya saja, tanpa embel-embel pembuka seperti "Berikut pesann
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 300,
+                    "temperature": 0.9,
                 },
                 timeout=30,
             )
-            print(f"Status: {resp.status_code}")
             if resp.status_code != 200:
-                print(f"Error: {resp.text[:300]}")
+                print(f"Error {resp.status_code}: {resp.text[:200]}")
             resp.raise_for_status()
             result = resp.json()["choices"][0]["message"]["content"].strip()
-            print(f"Berhasil dengan: {model}")
+            print(f"Berhasil: {model}")
             return result
         except Exception as e:
-            print(f"Model {model} gagal: {e}")
+            print(f"Gagal {model}: {e}")
             last_error = e
             continue
 
-    raise Exception(f"Semua model gagal. Error terakhir: {last_error}")
+    raise Exception(f"Semua model gagal: {last_error}")
 
 
 def send_telegram(prayer_key, motivation_text):
@@ -149,26 +165,24 @@ def send_telegram(prayer_key, motivation_text):
         "parse_mode": "Markdown",
     }, timeout=15)
     resp.raise_for_status()
+    print("Pesan terkirim ke Telegram!")
 
 
 def main():
+    print("Bot jadwal sholat mulai...")
     state = load_state()
     prayer_times = get_prayer_times()
-
-    print(f"State hari ini — sudah terkirim: {state['sent']}")
     due = find_due_prayer(prayer_times, state)
 
     if due is None:
-        print("Belum ada waktu sholat yang jatuh tempo saat ini.")
         return
 
-    print(f"Waktu {PRAYER_NAMES[due]} jatuh tempo, generate & kirim pesan...")
     motivation = generate_motivation(due)
     send_telegram(due, motivation)
 
     state["sent"].append(due)
     save_state(state)
-    print(f"Terkirim! Total terkirim hari ini: {state['sent']}")
+    print(f"State diupdate: {state['sent']}")
 
 
 if __name__ == "__main__":
