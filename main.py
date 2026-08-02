@@ -16,8 +16,8 @@ GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODELS = [
-    "llama-3.3-70b-versatile",   # kualitas terbaik, 1000 req/hari
-    "llama-3.1-8b-instant",      # fallback, 14400 req/hari
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
 ]
 
 STATE_FILE = "state.json"
@@ -69,9 +69,19 @@ def get_prayer_times():
 
 def find_due_prayer(prayer_times, state):
     now = datetime.now(ZoneInfo(TIMEZONE))
-    now_str = now.strftime("%H:%M")
+    now_minutes = now.hour * 60 + now.minute
+
+    print(f"Waktu sekarang: {now.strftime('%H:%M')} WIB")
     for key, waktu in prayer_times.items():
-        if waktu == now_str and key not in state["sent"]:
+        h, m = map(int, waktu.split(":"))
+        prayer_minutes = h * 60 + m
+        diff = now_minutes - prayer_minutes
+        print(f"  {PRAYER_NAMES[key]} ({waktu}): selisih {diff} menit | sudah kirim: {key in state['sent']}")
+
+        if key in state["sent"]:
+            continue
+        # Kirim kalau dalam window 0-10 menit setelah waktu sholat
+        if 0 <= diff <= 10:
             return key
     return None
 
@@ -144,6 +154,8 @@ def send_telegram(prayer_key, motivation_text):
 def main():
     state = load_state()
     prayer_times = get_prayer_times()
+
+    print(f"State hari ini — sudah terkirim: {state['sent']}")
     due = find_due_prayer(prayer_times, state)
 
     if due is None:
@@ -156,29 +168,8 @@ def main():
 
     state["sent"].append(due)
     save_state(state)
-    print("Terkirim.")
-
-
-def test_full_flow():
-    print("=== TEST FULL FLOW ===")
-
-    print("\n[1] Fetch jadwal sholat Purbalingga hari ini...")
-    prayer_times = get_prayer_times()
-    for key, waktu in prayer_times.items():
-        print(f"  {PRAYER_NAMES[key]}: {waktu} WIB")
-
-    print("\n[2] Generate motivasi via Groq AI...")
-    first_prayer = list(prayer_times.keys())[0]
-    motivation = generate_motivation(first_prayer)
-    print(f"\n  Hasil motivasi:\n  {motivation}")
-
-    print("\n[3] Kirim pesan lengkap ke Telegram...")
-    send_telegram(first_prayer, motivation)
-    print("  Terkirim!")
-
-    print("\n=== SELESAI — cek Telegram lo ===")
+    print(f"Terkirim! Total terkirim hari ini: {state['sent']}")
 
 
 if __name__ == "__main__":
-    # test_full_flow()
     main()
