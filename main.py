@@ -138,4 +138,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Paksa kirim Isya buat test
+    motivation = generate_motivation("Isha")
+    send_telegram("Isha", motivation)
+    # main()
