@@ -137,27 +137,5 @@ def main():
     print("Terkirim.")
 
 
-def test_full_flow():
-    """Test semua: fetch jadwal asli + generate motivasi + kirim format beneran ke Telegram."""
-    print("=== TEST FULL FLOW ===")
-    
-    print("\n[1] Fetch jadwal sholat Purbalingga hari ini...")
-    prayer_times = get_prayer_times()
-    for key, waktu in prayer_times.items():
-        print(f"  {PRAYER_NAMES[key]}: {waktu} WIB")
-
-    print("\n[2] Generate motivasi via OpenRouter...")
-    first_prayer = list(prayer_times.keys())[0]
-    motivation = generate_motivation(first_prayer)
-    print(f"  Motivasi: {motivation}")
-
-    print("\n[3] Kirim pesan lengkap ke Telegram...")
-    send_telegram(first_prayer, motivation)
-    print("  Terkirim!")
-
-    print("\n=== SELESAI — cek Telegram lo ===")
-
-
 if __name__ == "__main__":
-    test_full_flow()  # ← TEST MODE
-    # main()          # ← PRODUCTION (aktifin ini kalau test udah oke)
+    main()
