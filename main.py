@@ -180,5 +180,5 @@ def test_full_flow():
 
 
 if __name__ == "__main__":
-    test_full_flow()  # ← TEST dulu
-    # main()          # ← PRODUCTION (aktifin kalau test udah oke)
+    # test_full_flow()
+    main()
