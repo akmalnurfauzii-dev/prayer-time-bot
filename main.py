@@ -12,10 +12,13 @@ CALC_METHOD = 20
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
+GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
-GOOGLE_MODEL = "gemini-2.5-flash-lite"
-GOOGLE_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GOOGLE_MODEL}:generateContent"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODELS = [
+    "llama-3.3-70b-versatile",   # kualitas terbaik, 1000 req/hari
+    "llama-3.1-8b-instant",      # fallback, 14400 req/hari
+]
 
 STATE_FILE = "state.json"
 PRAYER_NAMES = {
@@ -86,19 +89,36 @@ Format pesan:
 
 Jawab HANYA isi pesannya saja, tanpa embel-embel pembuka seperti "Berikut pesannya:".
 """
-    resp = requests.post(
-        f"{GOOGLE_API_URL}?key={GOOGLE_API_KEY}",
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 300},
-        },
-        timeout=30,
-    )
-    print(f"Google API status: {resp.status_code}")
-    if resp.status_code != 200:
-        print(f"Error body: {resp.text[:500]}")
-    resp.raise_for_status()
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    last_error = None
+    for model in GROQ_MODELS:
+        try:
+            print(f"Mencoba model: {model}")
+            resp = requests.post(
+                GROQ_API_URL,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 300,
+                },
+                timeout=30,
+            )
+            print(f"Status: {resp.status_code}")
+            if resp.status_code != 200:
+                print(f"Error: {resp.text[:300]}")
+            resp.raise_for_status()
+            result = resp.json()["choices"][0]["message"]["content"].strip()
+            print(f"Berhasil dengan: {model}")
+            return result
+        except Exception as e:
+            print(f"Model {model} gagal: {e}")
+            last_error = e
+            continue
+
+    raise Exception(f"Semua model gagal. Error terakhir: {last_error}")
 
 
 def send_telegram(prayer_key, motivation_text):
@@ -147,10 +167,10 @@ def test_full_flow():
     for key, waktu in prayer_times.items():
         print(f"  {PRAYER_NAMES[key]}: {waktu} WIB")
 
-    print("\n[2] Generate motivasi via Google AI...")
+    print("\n[2] Generate motivasi via Groq AI...")
     first_prayer = list(prayer_times.keys())[0]
     motivation = generate_motivation(first_prayer)
-    print(f"  Motivasi: {motivation}")
+    print(f"\n  Hasil motivasi:\n  {motivation}")
 
     print("\n[3] Kirim pesan lengkap ke Telegram...")
     send_telegram(first_prayer, motivation)
