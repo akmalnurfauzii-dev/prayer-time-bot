@@ -12,18 +12,10 @@ CALC_METHOD = 20
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
+GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
 
-# Fallback chain — kalau model pertama 404/error, otomatis coba berikutnya
-FREE_MODELS = [
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "google/gemma-3-12b-it:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-    "deepseek/deepseek-r1:free",
-    "google/gemma-3-27b-it:free",
-    "moonshotai/kimi-k2:free",
-    "qwen/qwen3-coder:free",
-]
+GOOGLE_MODEL = "gemini-2.5-flash-lite"
+GOOGLE_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GOOGLE_MODEL}:generateContent"
 
 STATE_FILE = "state.json"
 PRAYER_NAMES = {
@@ -94,30 +86,17 @@ Format pesan:
 
 Jawab HANYA isi pesannya saja, tanpa embel-embel pembuka seperti "Berikut pesannya:".
 """
-    last_error = None
-    for model in FREE_MODELS:
-        try:
-            print(f"Mencoba model: {model}")
-            resp = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 300,
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            result = resp.json()["choices"][0]["message"]["content"].strip()
-            print(f"Berhasil dengan model: {model}")
-            return result
-        except Exception as e:
-            print(f"Model {model} gagal: {e}")
-            last_error = e
-            continue
-
-    raise Exception(f"Semua model gagal. Error terakhir: {last_error}")
+    resp = requests.post(
+        f"{GOOGLE_API_URL}?key={GOOGLE_API_KEY}",
+        json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 300},
+        },
+        timeout=30,
+    )
+    print(f"Google API status: {resp.status_code}")
+    resp.raise_for_status()
+    return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 
 def send_telegram(prayer_key, motivation_text):
@@ -158,8 +137,26 @@ def main():
     print("Terkirim.")
 
 
+def test_full_flow():
+    print("=== TEST FULL FLOW ===")
+
+    print("\n[1] Fetch jadwal sholat Purbalingga hari ini...")
+    prayer_times = get_prayer_times()
+    for key, waktu in prayer_times.items():
+        print(f"  {PRAYER_NAMES[key]}: {waktu} WIB")
+
+    print("\n[2] Generate motivasi via Google AI...")
+    first_prayer = list(prayer_times.keys())[0]
+    motivation = generate_motivation(first_prayer)
+    print(f"  Motivasi: {motivation}")
+
+    print("\n[3] Kirim pesan lengkap ke Telegram...")
+    send_telegram(first_prayer, motivation)
+    print("  Terkirim!")
+
+    print("\n=== SELESAI — cek Telegram lo ===")
+
+
 if __name__ == "__main__":
-    # Paksa kirim Isya buat test
-    motivation = generate_motivation("Isha")
-    send_telegram("Isha", motivation)
-    # main()
+    test_full_flow()  # ← TEST dulu
+    # main()          # ← PRODUCTION (aktifin kalau test udah oke)
