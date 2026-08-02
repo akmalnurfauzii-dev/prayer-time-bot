@@ -139,3 +139,13 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    # ==== KODE TEST SEMENTARA (HAPUS KALAU UDAH BERHASIL) ====
+    test_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    test_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if test_token and test_chat_id:
+        print("Mengirim pesan test paksa ke Telegram...")
+        requests.post(
+            f"https://api.telegram.org/bot{test_token}/sendMessage", 
+            data={"chat_id": test_chat_id, "text": "Test jalurnya jalan nih, Mal! 🚀 Kalo bunyi berarti MacroDroid aman!"}
+        )
