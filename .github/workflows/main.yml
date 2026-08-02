@@ -38,6 +38,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state.json
+          git add state.json 2>/dev/null || true
           git diff --staged --quiet || git commit -m "Update state jadwal sholat"
-          git push
+          git push 2>/dev/null || true
