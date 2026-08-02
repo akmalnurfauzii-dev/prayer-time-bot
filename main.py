@@ -14,7 +14,7 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
 
-GOOGLE_MODEL = "gemini-2.5-flash"
+GOOGLE_MODEL = "gemini-2.5-flash-lite"
 GOOGLE_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GOOGLE_MODEL}:generateContent"
 
 STATE_FILE = "state.json"
