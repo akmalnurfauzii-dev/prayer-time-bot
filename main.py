@@ -13,7 +13,17 @@ CALC_METHOD = 20
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+
+# Fallback chain — kalau model pertama 404/error, otomatis coba berikutnya
+FREE_MODELS = [
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "google/gemma-3-12b-it:free",
+    "mistralai/mistral-small-3.1-24b-instruct:free",
+    "deepseek/deepseek-r1:free",
+    "google/gemma-3-27b-it:free",
+    "moonshotai/kimi-k2:free",
+    "qwen/qwen3-coder:free",
+]
 
 STATE_FILE = "state.json"
 PRAYER_NAMES = {
@@ -84,19 +94,30 @@ Format pesan:
 
 Jawab HANYA isi pesannya saja, tanpa embel-embel pembuka seperti "Berikut pesannya:".
 """
-    resp = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-        json={
-            "model": OPENROUTER_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 300,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    return data["choices"][0]["message"]["content"].strip()
+    last_error = None
+    for model in FREE_MODELS:
+        try:
+            print(f"Mencoba model: {model}")
+            resp = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 300,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            result = resp.json()["choices"][0]["message"]["content"].strip()
+            print(f"Berhasil dengan model: {model}")
+            return result
+        except Exception as e:
+            print(f"Model {model} gagal: {e}")
+            last_error = e
+            continue
+
+    raise Exception(f"Semua model gagal. Error terakhir: {last_error}")
 
 
 def send_telegram(prayer_key, motivation_text):
@@ -138,7 +159,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # Paksa kirim Isya buat test
-    motivation = generate_motivation("Isha")
-    send_telegram("Isha", motivation)
-    # main()
+    main()
