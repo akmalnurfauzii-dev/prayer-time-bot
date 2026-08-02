@@ -14,7 +14,7 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
 
-GOOGLE_MODEL = "gemini-2.5-flash-lite"
+GOOGLE_MODEL = "gemini-2.5-flash"
 GOOGLE_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GOOGLE_MODEL}:generateContent"
 
 STATE_FILE = "state.json"
@@ -95,6 +95,8 @@ Jawab HANYA isi pesannya saja, tanpa embel-embel pembuka seperti "Berikut pesann
         timeout=30,
     )
     print(f"Google API status: {resp.status_code}")
+    if resp.status_code != 200:
+        print(f"Error body: {resp.text[:500]}")
     resp.raise_for_status()
     return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
