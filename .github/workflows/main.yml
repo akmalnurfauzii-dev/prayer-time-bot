@@ -1,12 +1,6 @@
 name: Jadwal Sholat Bot
 
 on:
-  schedule:
-    - cron: "24 21 * * *"  # Subuh  04:34 WIB = 21:34 UTC
-    - cron: "49 4 * * *"   # Dzuhur 11:49 WIB = 04:49 UTC
-    - cron: "10 8 * * *"   # Ashar  15:10 WIB = 08:10 UTC
-    - cron: "43 10 * * *"  # Maghrib 17:43 WIB = 10:43 UTC
-    - cron: "55 11 * * *"  # Isya   18:55 WIB = 11:55 UTC
   workflow_dispatch: {}
 
 permissions:
