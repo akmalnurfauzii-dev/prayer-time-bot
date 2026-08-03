@@ -20,8 +20,8 @@ GROQ_MODELS = [
     "llama-3.1-8b-instant",
 ]
 
-# Window deteksi waktu sholat — kirim kalau 0-20 menit setelah adzan
-WINDOW_MINUTES = 20
+# Window 30 menit antisipasi delay GitHub Actions
+WINDOW_MINUTES = 30
 
 STATE_FILE = "state.json"
 PRAYER_NAMES = {
@@ -47,12 +47,13 @@ def load_state():
             with open(STATE_FILE, "r") as f:
                 data = json.load(f)
             if data.get("date") == today:
+                print(f"State loaded: {data}")
                 return data
-        except Exception:
-            pass
-    # Reset state untuk hari baru
+        except Exception as e:
+            print(f"Error load state: {e}")
     fresh = {"date": today, "sent": []}
     save_state(fresh)
+    print(f"State baru: {fresh}")
     return fresh
 
 
@@ -73,7 +74,9 @@ def get_prayer_times():
     resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
     timings = resp.json()["data"]["timings"]
-    return {k: timings[k] for k in PRAYER_NAMES}
+    result = {k: timings[k] for k in PRAYER_NAMES}
+    print(f"Jadwal hari ini: {result}")
+    return result
 
 
 def find_due_prayer(prayer_times, state):
@@ -83,6 +86,7 @@ def find_due_prayer(prayer_times, state):
     print(f"\n{'='*40}")
     print(f"Waktu sekarang : {now.strftime('%H:%M')} WIB")
     print(f"Sudah terkirim : {state['sent']}")
+    print(f"Window         : 0 s/d {WINDOW_MINUTES} menit setelah adzan")
     print(f"{'='*40}")
 
     for key, waktu in prayer_times.items():
@@ -133,8 +137,9 @@ Jawab HANYA isi pesannya saja, tanpa embel-embel pembuka.
                 },
                 timeout=30,
             )
+            print(f"Status: {resp.status_code}")
             if resp.status_code != 200:
-                print(f"Error {resp.status_code}: {resp.text[:200]}")
+                print(f"Error: {resp.text[:300]}")
             resp.raise_for_status()
             result = resp.json()["choices"][0]["message"]["content"].strip()
             print(f"Berhasil: {model}")
@@ -165,7 +170,7 @@ def send_telegram(prayer_key, motivation_text):
         "parse_mode": "Markdown",
     }, timeout=15)
     resp.raise_for_status()
-    print("Pesan terkirim ke Telegram!")
+    print("✅ Pesan terkirim ke Telegram!")
 
 
 def main():
