@@ -1,13 +1,19 @@
-name: Cek Konfirmasi Sholat
+name: Jadwal Sholat Bot
 
 on:
+  schedule:
+    - cron: "24 21 * * *"
+    - cron: "49 4 * * *"
+    - cron: "10 8 * * *"
+    - cron: "43 10 * * *"
+    - cron: "55 11 * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
 jobs:
-  check-confirm:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -23,15 +29,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Cek konfirmasi
+      - name: Run bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: python check_confirmations.py
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python main.py
 
-      - name: Commit perubahan
+      - name: Commit state jika berubah
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add offset.json streak.json 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "Update konfirmasi & streak"
+          git add state.json 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "Update state jadwal sholat"
           git push 2>/dev/null || true
