@@ -1,8 +1,10 @@
 import os
 import json
+import random
 import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from urllib.parse import quote
 
 # ==== KONFIGURASI ====
 LATITUDE = -7.3886
@@ -36,6 +38,15 @@ NIAT = {
     "Asr": "Ushalli fardhal 'Ashri arba'a raka'atin mustaqbilal qiblati adaa'an lillaahi ta'aala.",
     "Maghrib": "Ushalli fardhal Maghribi tsalaatsa raka'atin mustaqbilal qiblati adaa'an lillaahi ta'aala.",
     "Isha": "Ushalli fardhal 'Isyaa-i arba'a raka'atin mustaqbilal qiblati adaa'an lillaahi ta'aala.",
+}
+
+# Prompt ilustrasi per waktu sholat — suasana khas tiap waktu
+IMAGE_PROMPTS = {
+    "Fajr": "serene dawn sky over silhouette of a mosque, soft blue and pink gradient, misty morning, minimalist digital painting, peaceful atmosphere, birds flying, no people, no text",
+    "Dhuhr": "bright midday sky over silhouette of a mosque, clear blue sky, warm sunlight, minimalist digital painting, peaceful atmosphere, no people, no text",
+    "Asr": "golden afternoon light over silhouette of a mosque, warm orange glow, long shadows, minimalist digital painting, peaceful atmosphere, no people, no text",
+    "Maghrib": "beautiful sunset over silhouette of a mosque, dramatic orange and purple sky, dusk atmosphere, minimalist digital painting, peaceful, no people, no text",
+    "Isha": "peaceful night sky over silhouette of a mosque, stars and crescent moon, deep blue night, minimalist digital painting, serene atmosphere, no people, no text",
 }
 
 
@@ -117,6 +128,27 @@ Jawab HANYA isi pesannya saja.
     raise Exception(f"Semua model gagal: {last_error}")
 
 
+def get_image_url(prayer_key):
+    prompt = IMAGE_PROMPTS[prayer_key]
+    seed = random.randint(1, 999999)
+    encoded_prompt = quote(prompt)
+    return f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&seed={seed}&nologo=true"
+
+
+def send_telegram_photo(image_url, caption):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    resp = requests.post(url, json={
+        "chat_id": TELEGRAM_CHAT_ID,
+        "photo": image_url,
+        "caption": caption,
+        "parse_mode": "Markdown",
+    }, timeout=30)
+    if resp.status_code != 200:
+        print(f"Gagal kirim foto: {resp.text[:300]}")
+        return False
+    return True
+
+
 def send_telegram(prayer_key, motivation_text):
     nama_waktu = PRAYER_NAMES[prayer_key]
     niat = NIAT[prayer_key]
@@ -124,8 +156,17 @@ def send_telegram(prayer_key, motivation_text):
     now_str = now.strftime("%H:%M")
     today_str = now.strftime("%Y-%m-%d")
 
+    caption = f"🕌 *Waktu Sholat {nama_waktu}* — {now_str} WIB"
+
+    # Kirim ilustrasi dulu
+    image_url = get_image_url(prayer_key)
+    print(f"Generate ilustrasi: {image_url}")
+    photo_sent = send_telegram_photo(image_url, caption)
+    if not photo_sent:
+        print("Ilustrasi gagal dikirim, lanjut kirim teks aja.")
+
+    # Kirim pesan lengkap + tombol konfirmasi
     message = (
-        f"🕌 *Waktu Sholat {nama_waktu}* — {now_str} WIB\n\n"
         f"*Niat:*\n_{niat}_\n\n"
         f"*Pengingat:*\n{motivation_text}"
     )
@@ -165,4 +206,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    motivation = generate_motivation("Dhuhr")
+    send_telegram("Dhuhr", motivation)
