@@ -209,4 +209,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    motivation = generate_motivation("Dhuhr")
+    send_telegram("Dhuhr", motivation)
+    # main()
