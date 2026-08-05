@@ -9,6 +9,7 @@ TIMEZONE = "Asia/Jakarta"
 
 OFFSET_FILE = "offset.json"
 STREAK_FILE = "streak.json"
+MOOD_FILE = "mood.json"
 
 PRAYER_NAMES = {
     "Fajr": "Subuh",
@@ -123,38 +124,54 @@ def main():
             continue
 
         data = callback.get("data", "")
-        if not data.startswith("confirm|"):
-            continue
-
-        try:
-            _, prayer_key, date_str = data.split("|")
-        except ValueError:
-            continue
-
-        if prayer_key not in ALL_PRAYER_KEYS:
-            continue
-
         chat_id = callback["message"]["chat"]["id"]
         message_id = callback["message"]["message_id"]
         original_text = callback["message"].get("text", "")
         callback_id = callback["id"]
 
-        day_list = history.get(date_str, [])
-        if prayer_key in day_list:
-            answer_callback(callback_id, "Udah dicatat sebelumnya kok ✅")
+        if data.startswith("confirm|"):
+            try:
+                _, prayer_key, date_str = data.split("|")
+            except ValueError:
+                continue
+            if prayer_key not in ALL_PRAYER_KEYS:
+                continue
+
+            day_list = history.get(date_str, [])
+            if prayer_key in day_list:
+                answer_callback(callback_id, "Udah dicatat sebelumnya kok ✅")
+                continue
+
+            day_list.append(prayer_key)
+            history[date_str] = day_list
+
+            answer_callback(callback_id, "Tercatat! Barakallah 🤲")
+            edit_message_mark_done(chat_id, message_id, original_text)
+
+            streak = compute_streak(history)
+            send_streak_update(chat_id, prayer_key, len(day_list), streak)
+
+            any_confirmation = True
+            print(f"Konfirmasi: {prayer_key} pada {date_str} — total hari ini: {len(day_list)}/5")
             continue
 
-        day_list.append(prayer_key)
-        history[date_str] = day_list
+        if data.startswith("mood|"):
+            try:
+                _, mood_value, date_str = data.split("|")
+            except ValueError:
+                continue
 
-        answer_callback(callback_id, "Tercatat! Barakallah 🤲")
-        edit_message_mark_done(chat_id, message_id, original_text)
+            mood_data = load_json(MOOD_FILE, {"history": {}})
+            mood_data["history"][date_str] = mood_value
+            save_json(MOOD_FILE, mood_data)
 
-        streak = compute_streak(history)
-        send_streak_update(chat_id, prayer_key, len(day_list), streak)
+            mood_labels = {"senang": "Senang 😊", "biasa": "Biasa 😐", "lelah": "Lelah 😴", "sedih": "Sedih 😔"}
+            answer_callback(callback_id, f"Tercatat: {mood_labels.get(mood_value, mood_value)}")
+            edit_message_mark_done(chat_id, message_id, original_text)
 
-        any_confirmation = True
-        print(f"Konfirmasi: {prayer_key} pada {date_str} — total hari ini: {len(day_list)}/5")
+            any_confirmation = True
+            print(f"Mood tercatat: {mood_value} pada {date_str}")
+            continue
 
     offset_data["offset"] = latest_offset
     save_json(OFFSET_FILE, offset_data)
