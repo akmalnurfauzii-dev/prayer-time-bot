@@ -40,7 +40,6 @@ NIAT = {
     "Isha": "Ushalli fardhal 'Isyaa-i arba'a raka'atin mustaqbilal qiblati adaa'an lillaahi ta'aala.",
 }
 
-# Prompt ilustrasi per waktu sholat — suasana khas tiap waktu
 IMAGE_PROMPTS = {
     "Fajr": "serene dawn sky over silhouette of a mosque, soft blue and pink gradient, misty morning, minimalist digital painting, peaceful atmosphere, birds flying, no people, no text",
     "Dhuhr": "bright midday sky over silhouette of a mosque, clear blue sky, warm sunlight, minimalist digital painting, peaceful atmosphere, no people, no text",
@@ -137,16 +136,23 @@ def get_image_url(prayer_key):
 
 def send_telegram_photo(image_url, caption):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    resp = requests.post(url, json={
-        "chat_id": TELEGRAM_CHAT_ID,
-        "photo": image_url,
-        "caption": caption,
-        "parse_mode": "Markdown",
-    }, timeout=30)
-    if resp.status_code != 200:
-        print(f"Gagal kirim foto: {resp.text[:300]}")
+    print(f"Mencoba kirim foto dari URL: {image_url}")
+    try:
+        resp = requests.post(url, json={
+            "chat_id": TELEGRAM_CHAT_ID,
+            "photo": image_url,
+            "caption": caption,
+            "parse_mode": "Markdown",
+        }, timeout=60)
+        print(f"Status kirim foto: {resp.status_code}")
+        if resp.status_code != 200:
+            print(f"GAGAL kirim foto. Response lengkap: {resp.text[:500]}")
+            return False
+        print("Foto berhasil terkirim!")
+        return True
+    except Exception as e:
+        print(f"EXCEPTION saat kirim foto: {e}")
         return False
-    return True
 
 
 def send_telegram(prayer_key, motivation_text):
@@ -158,14 +164,11 @@ def send_telegram(prayer_key, motivation_text):
 
     caption = f"🕌 *Waktu Sholat {nama_waktu}* — {now_str} WIB"
 
-    # Kirim ilustrasi dulu
     image_url = get_image_url(prayer_key)
-    print(f"Generate ilustrasi: {image_url}")
     photo_sent = send_telegram_photo(image_url, caption)
     if not photo_sent:
         print("Ilustrasi gagal dikirim, lanjut kirim teks aja.")
 
-    # Kirim pesan lengkap + tombol konfirmasi
     message = (
         f"*Niat:*\n_{niat}_\n\n"
         f"*Pengingat:*\n{motivation_text}"
