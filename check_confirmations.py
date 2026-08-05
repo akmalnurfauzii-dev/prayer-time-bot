@@ -20,6 +20,13 @@ PRAYER_NAMES = {
 }
 ALL_PRAYER_KEYS = list(PRAYER_NAMES.keys())
 
+MOOD_RESPONSES = {
+    "senang": "Alhamdulillah, senang dengernya! 😊 Semoga kebahagiaan ini jadi bekal semangat buat besok juga.",
+    "biasa": "Oke, dicatat ya. Hari yang biasa aja juga gak apa-apa kok — gak semua hari harus luar biasa.",
+    "lelah": "Wajar kok kalau lelah, istirahat yang cukup ya malam ini. Semoga besok terasa lebih ringan. 🤍",
+    "sedih": "Makasih udah jujur cerita gimana perasaan Akmal. Gak apa-apa merasa sedih, itu bagian dari proses. Kalau ada yang mengganggu pikiran, jangan ragu cerita ke orang terdekat atau keluarga ya — Akmal gak sendirian. 🤍",
+}
+
 
 def load_json(path, default):
     if os.path.exists(path):
@@ -63,6 +70,20 @@ def edit_message_mark_done(chat_id, message_id, original_text):
     }, timeout=15)
 
 
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown",
+    }, timeout=15)
+
+
+def send_mood_response(chat_id, mood_value):
+    text = MOOD_RESPONSES.get(mood_value, "Terima kasih sudah cerita ya.")
+    send_message(chat_id, text)
+
+
 def compute_streak(history):
     today = datetime.now(ZoneInfo(TIMEZONE)).date()
     streak = 0
@@ -97,12 +118,7 @@ def send_streak_update(chat_id, prayer_key, today_confirmed_count, streak):
     if today_confirmed_count == 5:
         text += "\n\n🎉 MasyaAllah, lengkap 5 waktu hari ini!"
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    requests.post(url, json={
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown",
-    }, timeout=15)
+    send_message(chat_id, text)
 
 
 def main():
@@ -168,6 +184,8 @@ def main():
             mood_labels = {"senang": "Senang 😊", "biasa": "Biasa 😐", "lelah": "Lelah 😴", "sedih": "Sedih 😔"}
             answer_callback(callback_id, f"Tercatat: {mood_labels.get(mood_value, mood_value)}")
             edit_message_mark_done(chat_id, message_id, original_text)
+
+            send_mood_response(chat_id, mood_value)
 
             any_confirmation = True
             print(f"Mood tercatat: {mood_value} pada {date_str}")
