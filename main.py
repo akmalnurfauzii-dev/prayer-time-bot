@@ -1,30 +1,16 @@
 import os
 import json
-import random
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from urllib.parse import quote
-
-# ==== KONFIGURASI ====
-LATITUDE = -7.3886
-LONGITUDE = 109.3608
-TIMEZONE = "Asia/Jakarta"
-CALC_METHOD = 20
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-GROQ_API_KEY = os.environ["GROQ_API_KEY"]
+TIMEZONE = "Asia/Jakarta"
 
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-]
+OFFSET_FILE = "offset.json"
+STREAK_FILE = "streak.json"
+MOOD_FILE = "mood.json"
 
-WINDOW_MINUTES = 30
-
-STATE_FILE = "state.json"
 PRAYER_NAMES = {
     "Fajr": "Subuh",
     "Dhuhr": "Dzuhur",
@@ -32,180 +18,174 @@ PRAYER_NAMES = {
     "Maghrib": "Maghrib",
     "Isha": "Isya",
 }
-NIAT = {
-    "Fajr": "Ushalli fardhal Shubhi rak'ataini mustaqbilal qiblati adaa'an lillaahi ta'aala.",
-    "Dhuhr": "Ushalli fardhazh Zhuhri arba'a raka'atin mustaqbilal qiblati adaa'an lillaahi ta'aala.",
-    "Asr": "Ushalli fardhal 'Ashri arba'a raka'atin mustaqbilal qiblati adaa'an lillaahi ta'aala.",
-    "Maghrib": "Ushalli fardhal Maghribi tsalaatsa raka'atin mustaqbilal qiblati adaa'an lillaahi ta'aala.",
-    "Isha": "Ushalli fardhal 'Isyaa-i arba'a raka'atin mustaqbilal qiblati adaa'an lillaahi ta'aala.",
-}
-
-IMAGE_PROMPTS = {
-    "Fajr": "serene dawn sky over silhouette of a mosque, soft blue and pink gradient, misty morning, minimalist digital painting, peaceful atmosphere, birds flying, no people, no text",
-    "Dhuhr": "bright midday sky over silhouette of a mosque, clear blue sky, warm sunlight, minimalist digital painting, peaceful atmosphere, no people, no text",
-    "Asr": "golden afternoon light over silhouette of a mosque, warm orange glow, long shadows, minimalist digital painting, peaceful atmosphere, no people, no text",
-    "Maghrib": "beautiful sunset over silhouette of a mosque, dramatic orange and purple sky, dusk atmosphere, minimalist digital painting, peaceful, no people, no text",
-    "Isha": "peaceful night sky over silhouette of a mosque, stars and crescent moon, deep blue night, minimalist digital painting, serene atmosphere, no people, no text",
-}
+ALL_PRAYER_KEYS = list(PRAYER_NAMES.keys())
 
 
-def load_state():
-    today = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
-    if os.path.exists(STATE_FILE):
+def load_json(path, default):
+    if os.path.exists(path):
         try:
-            with open(STATE_FILE, "r") as f:
-                data = json.load(f)
-            if data.get("date") == today:
-                return data
+            with open(path, "r") as f:
+                return json.load(f)
         except Exception:
             pass
-    fresh = {"date": today, "sent": []}
-    save_state(fresh)
-    return fresh
+    return default
 
 
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
 
 
-def get_prayer_times():
-    today = datetime.now(ZoneInfo(TIMEZONE))
-    url = "https://api.aladhan.com/v1/timings"
-    params = {
-        "latitude": LATITUDE,
-        "longitude": LONGITUDE,
-        "method": CALC_METHOD,
-        "date": today.strftime("%d-%m-%Y"),
-    }
+def get_updates(offset):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+    params = {"offset": offset, "timeout": 5}
     resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
-    timings = resp.json()["data"]["timings"]
-    return {k: timings[k] for k in PRAYER_NAMES}
+    return resp.json().get("result", [])
 
 
-def find_due_prayer(prayer_times, state):
-    now = datetime.now(ZoneInfo(TIMEZONE))
-    now_minutes = now.hour * 60 + now.minute
-    for key, waktu in prayer_times.items():
-        if key in state["sent"]:
-            continue
-        h, m = map(int, waktu.split(":"))
-        diff = now_minutes - (h * 60 + m)
-        if 0 <= diff <= WINDOW_MINUTES:
-            return key
-    return None
+def answer_callback(callback_query_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
+    requests.post(url, json={
+        "callback_query_id": callback_query_id,
+        "text": text,
+        "show_alert": False,
+    }, timeout=15)
 
 
-def generate_motivation(prayer_key):
-    nama_waktu = PRAYER_NAMES[prayer_key]
-    prompt = f"""Buatkan pesan singkat pengingat waktu sholat {nama_waktu} dalam Bahasa Indonesia untuk seorang pemuda muslim bernama Akmal yang sedang berjuang meraih beasiswa kuliah S1 Computer Science ke luar negeri dan membantu usaha keluarga.
-
-Format pesan:
-1. Motivasi related dengan waktu {nama_waktu} — tentang semangat sukses, rezeki, dan selalu mengingat Allah dalam usaha
-2. Buat bervariasi, jangan template kaku, boleh sisipkan quote islami singkat
-3. Nada hangat, membangun semangat, bukan menggurui
-4. Maksimal 4-5 kalimat total
-5. Jangan pakai emoji berlebihan (maksimal 1-2)
-
-Jawab HANYA isi pesannya saja.
-"""
-    last_error = None
-    for model in GROQ_MODELS:
-        try:
-            resp = requests.post(
-                GROQ_API_URL,
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 300, "temperature": 0.9},
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            last_error = e
-            continue
-    raise Exception(f"Semua model gagal: {last_error}")
+def edit_message_mark_done(chat_id, message_id, original_text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
+    requests.post(url, json={
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": original_text + "\n\n✅ *Sudah dikonfirmasi*",
+        "parse_mode": "Markdown",
+    }, timeout=15)
 
 
-def get_image_url(prayer_key):
-    prompt = IMAGE_PROMPTS[prayer_key]
-    seed = random.randint(1, 999999)
-    encoded_prompt = quote(prompt)
-    return f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&seed={seed}&nologo=true"
+def compute_streak(history):
+    today = datetime.now(ZoneInfo(TIMEZONE)).date()
+    streak = 0
+    check_date = today
+
+    today_str = today.strftime("%Y-%m-%d")
+    today_confirmed = set(history.get(today_str, []))
+    if len(today_confirmed) < 5:
+        check_date = today - timedelta(days=1)
+
+    while True:
+        date_str = check_date.strftime("%Y-%m-%d")
+        confirmed = set(history.get(date_str, []))
+        if len(confirmed) >= 5:
+            streak += 1
+            check_date -= timedelta(days=1)
+        else:
+            break
+
+    return streak
 
 
-def send_telegram_photo(image_url, caption):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    print(f"Mencoba kirim foto dari URL: {image_url}")
-    try:
-        resp = requests.post(url, json={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "photo": image_url,
-            "caption": caption,
-            "parse_mode": "Markdown",
-        }, timeout=60)
-        print(f"Status kirim foto: {resp.status_code}")
-        if resp.status_code != 200:
-            print(f"GAGAL kirim foto. Response lengkap: {resp.text[:500]}")
-            return False
-        print("Foto berhasil terkirim!")
-        return True
-    except Exception as e:
-        print(f"EXCEPTION saat kirim foto: {e}")
-        return False
+def send_streak_update(chat_id, prayer_key, today_confirmed_count, streak):
+    nama = PRAYER_NAMES[prayer_key]
+    progress_bar = "🟩" * today_confirmed_count + "⬜" * (5 - today_confirmed_count)
 
-
-def send_telegram(prayer_key, motivation_text):
-    nama_waktu = PRAYER_NAMES[prayer_key]
-    niat = NIAT[prayer_key]
-    now = datetime.now(ZoneInfo(TIMEZONE))
-    now_str = now.strftime("%H:%M")
-    today_str = now.strftime("%Y-%m-%d")
-
-    caption = f"🕌 *Waktu Sholat {nama_waktu}* — {now_str} WIB"
-
-    image_url = get_image_url(prayer_key)
-    photo_sent = send_telegram_photo(image_url, caption)
-    if not photo_sent:
-        print("Ilustrasi gagal dikirim, lanjut kirim teks aja.")
-
-    message = (
-        f"*Niat:*\n_{niat}_\n\n"
-        f"*Pengingat:*\n{motivation_text}"
+    text = (
+        f"✅ *{nama}* tercatat!\n\n"
+        f"Progress hari ini: {progress_bar} ({today_confirmed_count}/5)\n"
+        f"🔥 Streak: *{streak} hari beruntun*"
     )
-
-    reply_markup = {
-        "inline_keyboard": [[
-            {"text": "✅ Sudah Sholat", "callback_data": f"confirm|{prayer_key}|{today_str}"}
-        ]]
-    }
+    if today_confirmed_count == 5:
+        text += "\n\n🎉 MasyaAllah, lengkap 5 waktu hari ini!"
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    resp = requests.post(url, json={
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
+    requests.post(url, json={
+        "chat_id": chat_id,
+        "text": text,
         "parse_mode": "Markdown",
-        "reply_markup": reply_markup,
     }, timeout=15)
-    resp.raise_for_status()
-    print("Pesan + tombol konfirmasi terkirim!")
 
 
 def main():
-    state = load_state()
-    prayer_times = get_prayer_times()
-    due = find_due_prayer(prayer_times, state)
+    offset_data = load_json(OFFSET_FILE, {"offset": 0})
+    streak_data = load_json(STREAK_FILE, {"history": {}, "current_streak": 0})
+    history = streak_data.get("history", {})
 
-    if due is None:
-        print("Belum ada waktu sholat yang jatuh tempo saat ini.")
-        return
+    updates = get_updates(offset_data["offset"])
+    print(f"Ditemukan {len(updates)} update baru.")
 
-    motivation = generate_motivation(due)
-    send_telegram(due, motivation)
+    latest_offset = offset_data["offset"]
+    any_confirmation = False
 
-    state["sent"].append(due)
-    save_state(state)
-    print(f"Terkirim untuk {PRAYER_NAMES[due]}.")
+    for update in updates:
+        latest_offset = update["update_id"] + 1
+
+        callback = update.get("callback_query")
+        if not callback:
+            continue
+
+        data = callback.get("data", "")
+        chat_id = callback["message"]["chat"]["id"]
+        message_id = callback["message"]["message_id"]
+        original_text = callback["message"].get("text", "")
+        callback_id = callback["id"]
+
+        # Handler konfirmasi sholat
+        if data.startswith("confirm|"):
+            try:
+                _, prayer_key, date_str = data.split("|")
+            except ValueError:
+                continue
+            if prayer_key not in ALL_PRAYER_KEYS:
+                continue
+
+            day_list = history.get(date_str, [])
+            if prayer_key in day_list:
+                answer_callback(callback_id, "Udah dicatat sebelumnya kok ✅")
+                continue
+
+            day_list.append(prayer_key)
+            history[date_str] = day_list
+
+            answer_callback(callback_id, "Tercatat! Barakallah 🤲")
+            edit_message_mark_done(chat_id, message_id, original_text)
+
+            streak = compute_streak(history)
+            send_streak_update(chat_id, prayer_key, len(day_list), streak)
+
+            any_confirmation = True
+            print(f"Konfirmasi: {prayer_key} pada {date_str} — total hari ini: {len(day_list)}/5")
+            continue
+
+        # Handler mood check-in
+        if data.startswith("mood|"):
+            try:
+                _, mood_value, date_str = data.split("|")
+            except ValueError:
+                continue
+
+            mood_data = load_json(MOOD_FILE, {"history": {}})
+            mood_data["history"][date_str] = mood_value
+            save_json(MOOD_FILE, mood_data)
+
+            mood_labels = {"senang": "Senang 😊", "biasa": "Biasa 😐", "lelah": "Lelah 😴", "sedih": "Sedih 😔"}
+            answer_callback(callback_id, f"Tercatat: {mood_labels.get(mood_value, mood_value)}")
+            edit_message_mark_done(chat_id, message_id, original_text)
+
+            any_confirmation = True
+            print(f"Mood tercatat: {mood_value} pada {date_str}")
+            continue
+
+    offset_data["offset"] = latest_offset
+    save_json(OFFSET_FILE, offset_data)
+
+    streak_data["history"] = history
+    streak_data["current_streak"] = compute_streak(history)
+    save_json(STREAK_FILE, streak_data)
+
+    if any_confirmation:
+        print(f"Streak saat ini: {streak_data['current_streak']} hari")
+    else:
+        print("Tidak ada konfirmasi baru.")
 
 
 if __name__ == "__main__":
