@@ -189,4 +189,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # ==== MODE TEST: paksa simulasi Jumat ====
+    motivation = generate_motivation("Dhuhr", is_jumat=True)
+    send_prayer_message("Dhuhr", motivation, is_jumat=True)
+    send_tafsir_mingguan()
+    send_mood_checkin()
+    # main()
