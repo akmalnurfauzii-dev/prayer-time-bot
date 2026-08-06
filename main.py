@@ -40,6 +40,14 @@ NIAT = {
 }
 NIAT_JUMAT = "Ushalli fardhal Jumu'ati rak'ataini imaman/ma'muman lillaahi ta'aala."
 
+BACAAN_DIANJURKAN = {
+    "Fajr": "Setelah Subuh dianjurkan membaca Al-Ma'tsurat pagi, dzikir pagi (Al-Baqarah 255-257, atau minimal Ayat Kursi + 3 Qul), dan duduk berdzikir sampai syuruq kalau sempat.",
+    "Dhuhr": "Setelah Dzuhur dianjurkan dzikir sesudah sholat (tasbih 33x, tahmid 33x, takbir 33x) dan doa sesudah sholat seperti biasa.",
+    "Asr": "Setelah Ashar dianjurkan membaca Al-Ma'tsurat sore / dzikir petang (Al-Ikhlas, Al-Falaq, An-Nas masing-masing 3x, dan Ayat Kursi).",
+    "Maghrib": "Setelah Maghrib dianjurkan membaca dzikir petang lanjutan dan Surah Al-Waqiah kalau sempat, sebagai sebab kelapangan rezeki.",
+    "Isha": "Setelah Isya dianjurkan membaca Surah Al-Mulk sebelum tidur, dan jangan lupa Sholat Witir kalau belum sempat sebelumnya.",
+}
+
 IMAGE_PROMPTS = {
     "Fajr": "serene dawn sky over silhouette of a mosque, soft blue and pink gradient, misty morning, minimalist digital painting, peaceful atmosphere, birds flying, no people, no text",
     "Dhuhr": "bright midday sky over silhouette of a mosque, clear blue sky, warm sunlight, minimalist digital painting, peaceful atmosphere, no people, no text",
@@ -220,7 +228,10 @@ def send_prayer_message(prayer_key, motivation_text, is_jumat=False):
     image_url = get_image_url(prayer_key)
     send_telegram_photo(image_url, header)
 
-    message = f"*Niat:*\n_{niat}_\n\n*Pengingat:*\n{motivation_text}{extra_note}"
+    bacaan = BACAAN_DIANJURKAN.get(prayer_key, "")
+    bacaan_note = f"\n\n📚 *Bacaan dianjurkan:*\n_{bacaan}_" if bacaan else ""
+
+    message = f"*Niat:*\n_{niat}_\n\n*Pengingat:*\n{motivation_text}{extra_note}{bacaan_note}"
 
     reply_markup = {
         "inline_keyboard": [[
